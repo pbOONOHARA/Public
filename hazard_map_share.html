@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1f2e">
+<title>避難支援マップ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- Firebase SDK (無料 Realtime Database) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1f2e;--panel:#232a3b;--panel2:#2a3347;--border:#3a4458;
+  --text:#e8edf5;--muted:#7a8aa0;--accent:#4da6ff;--green:#3dba6f;
+  --flood:#4488ff;--land:#f5a623;--surge:#9b6bff;--tsun:#ff5252;
+}
+html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text)}
+#map{position:fixed;inset:0;z-index:0}
+
+/* ── 上部バー ── */
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:1000;
+  background:rgba(26,31,46,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);padding:10px 14px;
+  display:flex;align-items:center;gap:10px;
+}
+#topbar h1{font-size:14px;font-weight:700}
+#topbar small{font-size:10px;color:var(--muted);display:block;margin-top:1px}
+#topbar-right{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
+#online-badge{
+  background:rgba(61,186,111,.15);border:1px solid rgba(61,186,111,.4);
+  color:var(--green);border-radius:20px;padding:3px 10px;
+  font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+#share-dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0}
+#share-dot.on{background:var(--green);animation:blink 2s infinite}
+#share-dot.err{background:var(--tsun)}
+#name-btn{
+  background:none;border:none;font-size:13px;cursor:pointer;color:var(--muted);
+  padding:2px;-webkit-tap-highlight-color:transparent;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── 地図ボタン共通 ── */
+.map-btn{
+  position:fixed;right:14px;z-index:1000;
+  width:46px;height:46px;background:var(--panel);border:1.5px solid var(--border);
+  border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  transition:background .2s,border-color .2s;-webkit-tap-highlight-color:transparent;
+}
+#gps-btn{top:68px}
+#gps-btn.locating{border-color:var(--accent);animation:gpspulse 1s infinite}
+#gps-btn.located{border-color:var(--green)}
+#list-btn{top:126px}
+#list-btn.open{border-color:var(--accent);background:rgba(77,166,255,.1)}
+@keyframes gpspulse{0%,100%{box-shadow:0 0 0 0 rgba(77,166,255,.4)}50%{box-shadow:0 0 0 8px rgba(77,166,255,0)}}
+
+/* ── ベース切替 ── */
+#base-switcher{
+  position:fixed;right:14px;top:184px;z-index:1000;
+  background:var(--panel);border:1.5px solid var(--border);border-radius:12px;
+  overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.base-opt{
+  display:block;padding:8px 14px;font-size:11px;font-family:'Noto Sans JP',sans-serif;
+  color:var(--muted);border:none;background:none;cursor:pointer;width:100%;text-align:left;
+  border-bottom:1px solid var(--border);transition:background .15s,color .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.base-opt:last-child{border-bottom:none}
+.base-opt.active{color:var(--accent);font-weight:700;background:rgba(77,166,255,.08)}
+
+/* ── デバイス一覧パネル ── */
+#device-list{
+  position:fixed;right:68px;top:126px;z-index:1001;
+  background:var(--panel);border:1.5px solid var(--border);border-radius:14px;
+  min-width:190px;max-width:250px;max-height:55vh;overflow-y:auto;
+  box-shadow:0 4px 24px rgba(0,0,0,.55);display:none;
+}
+#device-list.open{display:block}
+#device-list-title{
+  font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);
+  padding:10px 14px 8px;border-bottom:1px solid var(--border);text-transform:uppercase;
+}
+.dev-row{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;border-bottom:1px solid rgba(58,68,88,.5);cursor:pointer;
+  transition:background .15s;
+}
+.dev-row:last-child{border-bottom:none}
+.dev-row:active{background:rgba(255,255,255,.04)}
+.dev-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.25)}
+.dev-name{flex:1;font-size:12px;font-weight:500}
+.dev-info{font-size:9px;color:var(--muted);text-align:right;line-height:1.5}
+.dev-row.stale{opacity:.5}
+.dev-empty{padding:14px;font-size:11px;color:var(--muted);text-align:center}
+
+/* ── ハザードパネル ── */
+#panel{
+  position:fixed;left:0;right:0;bottom:0;z-index:1000;
+  background:rgba(26,31,46,.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-top:1px solid var(--border);border-radius:20px 20px 0 0;
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+#panel-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0}
+#panel-title{
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);padding:8px 16px 4px;display:flex;align-items:center;gap:6px;
+}
+#layers-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px 14px}
+.lcard{
+  background:var(--panel);border:1.5px solid var(--border);border-radius:12px;
+  padding:10px 12px;cursor:pointer;transition:background .15s,border-color .15s;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+}
+.lcard.on{background:rgba(255,255,255,.04)}
+.lcard-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.lcard-icon{font-size:18px;line-height:1}
+.lcard-label{font-size:12px;font-weight:700;flex:1}
+.lcard-toggle{
+  width:30px;height:17px;background:var(--border);border-radius:9px;
+  position:relative;transition:background .2s;flex-shrink:0;
+}
+.lcard-toggle::after{
+  content:'';position:absolute;top:2.5px;left:2.5px;width:12px;height:12px;
+  border-radius:50%;background:#fff;transition:transform .2s;
+}
+.lcard.on .lcard-toggle{background:var(--color)}
+.lcard.on .lcard-toggle::after{transform:translateX(13px)}
+.lcard-sub{font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.3}
+.op-row{display:flex;align-items:center;gap:6px}
+.op-label{font-size:9px;color:var(--muted);white-space:nowrap}
+input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:var(--border);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;cursor:pointer;border:2px solid #fff}
+.op-val{font-size:9px;color:var(--muted);width:24px;text-align:right}
+.lcard[data-key=flood]{--color:var(--flood)}
+.lcard[data-key=land]{--color:var(--land)}
+.lcard[data-key=surge]{--color:var(--surge)}
+.lcard[data-key=tsun]{--color:var(--tsun)}
+input[type=range][data-key=flood]::-webkit-slider-thumb{background:var(--flood)}
+input[type=range][data-key=land]::-webkit-slider-thumb{background:var(--land)}
+input[type=range][data-key=surge]::-webkit-slider-thumb{background:var(--surge)}
+input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
+
+/* ── セットアップモーダル ── */
+#setup-modal{
+  position:fixed;inset:0;z-index:9000;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+}
+#setup-box{
+  background:var(--panel);border:1.5px solid var(--border);
+  border-radius:20px;padding:28px 24px;width:min(320px,90vw);
+  box-shadow:0 8px 40px rgba(0,0,0,.6);
+}
+#setup-box h2{font-size:17px;font-weight:700;margin-bottom:6px}
+#setup-box p{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.7}
+#name-input-field{
+  width:100%;padding:13px 14px;font-size:16px;
+  background:var(--bg);border:1.5px solid var(--border);
+  border-radius:10px;color:var(--text);font-family:'Noto Sans JP',sans-serif;
+  outline:none;margin-bottom:14px;
+}
+#name-input-field:focus{border-color:var(--accent)}
+#setup-ok{
+  width:100%;padding:14px;font-size:14px;font-weight:700;
+  background:var(--accent);color:#fff;border:none;
+  border-radius:10px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;
+  transition:opacity .2s;
+}
+#setup-ok:disabled{opacity:.35;cursor:default}
+
+/* ── トースト ── */
+#toast{
+  position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:2000;
+  background:rgba(35,42,59,.96);border:1px solid var(--border);border-radius:20px;
+  padding:8px 18px;font-size:12px;color:var(--text);white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);opacity:0;transition:opacity .3s;pointer-events:none;
+}
+#toast.show{opacity:1}
+
+/* ── Leaflet ── */
+.leaflet-control-zoom{border:none!important;border-radius:12px!important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--border)!important;width:36px!important;height:36px!important;line-height:36px!important;font-size:16px!important}
+.leaflet-control-zoom a:last-child{border-bottom:none!important}
+.leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--muted)!important;font-size:9px!important;border-radius:6px 0 0 0!important}
+.leaflet-control-attribution a{color:var(--accent)!important}
+.leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 210px)!important}
+/* デバイスポップアップ */
+.dev-popup .leaflet-popup-content-wrapper{
+  background:rgba(26,31,46,.97);border:1px solid var(--border);
+  border-radius:12px;color:var(--text);font-family:'Noto Sans JP',sans-serif;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.dev-popup .leaflet-popup-tip-container{display:none}
+.dev-popup .leaflet-popup-content{margin:12px 16px;font-size:12px;line-height:1.7}
+.dev-popup .leaflet-popup-close-button{color:var(--muted)!important;font-size:18px!important;right:8px!important;top:6px!important}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- ★ セットアップモーダル：初回・名前変更時に表示 -->
+<div id="setup-modal">
+  <div id="setup-box">
+    <h2>📛 デバイス名を入力</h2>
+    <p>地図上に表示される識別名を入力してください。<br>
+    名前・番号・担当エリアなど自由に設定できます。<br>
+    <span style="color:var(--accent)">例：田中、tablet-05、北エリア担当</span></p>
+    <input type="text" id="name-input-field" placeholder="デバイス名（最大10文字）" maxlength="10" autocomplete="off" autocorrect="off">
+    <button id="setup-ok" disabled>この名前で開始</button>
+  </div>
+</div>
+
+<!-- 上部バー -->
+<div id="topbar">
+  <div style="flex:1;min-width:0">
+    <h1>🗾 避難支援マップ</h1>
+    <small>ハザードマップ × 位置共有 | Zoom <span id="zval">--</span></small>
+  </div>
+  <div id="topbar-right">
+    <div id="share-dot" title="共有状態"></div>
+    <div id="online-badge" title="接続中デバイス一覧">0台</div>
+    <button id="name-btn" title="名前を変更">✏️</button>
+  </div>
+</div>
+
+<!-- GPS / 共有ボタン -->
+<button class="map-btn" id="gps-btn" title="GPS ON/OFF・位置を共有">📍</button>
+
+<!-- デバイス一覧ボタン -->
+<button class="map-btn" id="list-btn" title="接続中デバイス一覧">👥</button>
+
+<!-- デバイス一覧パネル -->
+<div id="device-list">
+  <div id="device-list-title">接続中のデバイス</div>
+  <div id="device-list-body"></div>
+</div>
+
+<!-- ベース地図切替 -->
+<div id="base-switcher">
+  <button class="base-opt active" onclick="setBase('pale')">🗺 淡色地図</button>
+  <button class="base-opt" onclick="setBase('std')">📍 標準地図</button>
+  <button class="base-opt" onclick="setBase('osm')">🌍 OpenStreetMap</button>
+</div>
+
+<!-- ハザードレイヤーパネル -->
+<div id="panel">
+  <div id="panel-handle"></div>
+  <div id="panel-title">ハザードレイヤー <span id="layer-count" style="color:var(--accent)">4/4 ON</span></div>
+  <div id="layers-grid">
+    <div class="lcard on" data-key="flood" onclick="toggleLayer('flood')">
+      <div class="lcard-top">
+        <span class="lcard-icon">🌊</span>
+        <span class="lcard-label" style="color:var(--flood)">洪水</span>
+        <div class="lcard-toggle"></div>
+      </div>
+      <div class="lcard-sub">浸水想定区域<br>想定最大規模(L2)</div>
+      <div class="op-row">
+        <span class="op-label">透過</span>
+        <input type="range" data-key="flood" min="0" max="100" value="70" oninput="setOp('flood',this.value)">
+        <span class="op-val" id="ov-flood">70</span>
+      </div>
+    </div>
+    <div class="lcard on" data-key="land" onclick="toggleLayer('land')">
+      <div class="lcard-top">
+        <span class="lcard-icon">⛰️</span>
+        <span class="lcard-label" style="color:var(--land)">土砂災害</span>
+        <div class="lcard-toggle"></div>
+      </div>
+      <div class="lcard-sub">警戒区域<br>土石流・急傾斜・地すべり</div>
+      <div class="op-row">
+        <span class="op-label">透過</span>
+        <input type="range" data-key="land" min="0" max="100" value="70" oninput="setOp('land',this.value)">
+        <span class="op-val" id="ov-land">70</span>
+      </div>
+    </div>
+    <div class="lcard on" data-key="surge" onclick="toggleLayer('surge')">
+      <div class="lcard-top">
+        <span class="lcard-icon">🌀</span>
+        <span class="lcard-label" style="color:var(--surge)">高潮</span>
+        <div class="lcard-toggle"></div>
+      </div>
+      <div class="lcard-sub">浸水想定区域<br>最大規模台風等</div>
+      <div class="op-row">
+        <span class="op-label">透過</span>
+        <input type="range" data-key="surge" min="0" max="100" value="70" oninput="setOp('surge',this.value)">
+        <span class="op-val" id="ov-surge">70</span>
+      </div>
+    </div>
+    <div class="lcard on" data-key="tsun" onclick="toggleLayer('tsun')">
+      <div class="lcard-top">
+        <span class="lcard-icon">🌊</span>
+        <span class="lcard-label" style="color:var(--tsun)">津波</span>
+        <div class="lcard-toggle"></div>
+      </div>
+      <div class="lcard-sub">浸水想定<br>最大クラス</div>
+      <div class="op-row">
+        <span class="op-label">透過</span>
+        <input type="range" data-key="tsun" min="0" max="100" value="70" oninput="setOp('tsun',this.value)">
+        <span class="op-val" id="ov-tsun">70</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// ★★★ Firebase 設定 ★★★
+// 手順: https://console.firebase.google.com/
+//   1. 新しいプロジェクトを作成
+//   2. Realtime Database を作成（テストモードで開始）
+//   3. プロジェクトの設定 → マイアプリ → ウェブ(</>)でアプリ追加
+//   4. 表示された設定値を以下に貼り付け
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyB1aWTqpuc_WHQXevn5qVnZdhuPQ-fPu4g",
+  authDomain:        "evacuation-map-3e56e.firebaseapp.com",
+  databaseURL:       "https://evacuation-map-3e56e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "evacuation-map-3e56e",
+  storageBucket:     "evacuation-map-3e56e.firebasestorage.app",
+  messagingSenderId: "137451732879",
+  appId:             "1:137451732879:web:4f4c947682926784ce95fa"
+};
+// ============================================================
+
+// デバイスカラーパレット（60台に対応できる20色）
+const COLORS = [
+  '#4da6ff','#3dba6f','#ff6b6b','#ffd93d','#a55eea',
+  '#2bcbba','#ff9f43','#45aaf2','#fc5c65','#fd9644',
+  '#26de81','#f7b731','#eb3b5a','#4b7bec','#a29bfe',
+  '#fdcb6e','#6c5ce7','#00b894','#e17055','#74b9ff',
+];
+
+// ─────────────────────────────────────────────────────
+// Firebase 初期化（設定が未入力の場合はオフラインモードで起動）
+// ─────────────────────────────────────────────────────
+let db = null;
+let locRef = null;
+const FIREBASE_READY = FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
+
+if (FIREBASE_READY) {
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
+    locRef = db.ref('locations');
+  } catch(e) {
+    console.error('Firebase初期化失敗:', e);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// デバイスID・名前の管理
+// ─────────────────────────────────────────────────────
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem('evacMap_deviceId');
+  if (!id) {
+    // ランダムなユニークIDを生成してローカルに保存
+    id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    localStorage.setItem('evacMap_deviceId', id);
+  }
+  return id;
+}
+
+function colorForId(id) {
+  // IDから一貫したカラーインデックスを決定
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) & 0x7fffffff;
+  }
+  return COLORS[hash % COLORS.length];
+}
+
+const MY_ID    = getOrCreateDeviceId();
+const MY_COLOR = colorForId(MY_ID);
+let myName     = localStorage.getItem('evacMap_deviceName') || '';
+
+// ─────────────────────────────────────────────────────
+// セットアップモーダル（初回 / 名前変更）
+// ─────────────────────────────────────────────────────
+const setupModal  = document.getElementById('setup-modal');
+const nameField   = document.getElementById('name-input-field');
+const setupOkBtn  = document.getElementById('setup-ok');
+
+function openSetup() {
+  nameField.value = myName;
+  setupOkBtn.disabled = !nameField.value.trim();
+  setupModal.style.display = 'flex';
+  setTimeout(() => nameField.focus(), 150);
+}
+
+function applyName(name) {
+  myName = name.trim();
+  localStorage.setItem('evacMap_deviceName', myName);
+  setupModal.style.display = 'none';
+  // GPS共有中なら名前を更新
+  if (watching && locRef) uploadLocation(null, null, null, true);
+}
+
+nameField.addEventListener('input', () => {
+  setupOkBtn.disabled = !nameField.value.trim();
+});
+nameField.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && nameField.value.trim()) applyName(nameField.value);
+});
+setupOkBtn.addEventListener('click', () => {
+  if (nameField.value.trim()) applyName(nameField.value);
+});
+
+// 初回は名前未設定なのでモーダルを表示
+if (!myName) {
+  openSetup();
+} else {
+  setupModal.style.display = 'none';
+}
+
+// ✏️ ボタンで名前変更
+document.getElementById('name-btn').addEventListener('click', openSetup);
+
+// ─────────────────────────────────────────────────────
+// ハザードマップ (Leaflet)
+// ─────────────────────────────────────────────────────
+const HAZARD_DEF = {
+  flood: ['https://disaportaldata.gsi.go.jp/raster/01_flood_l2_shinsuishin_data/{z}/{x}/{y}.png'],
+  land: [
+    'https://disaportaldata.gsi.go.jp/raster/05_dosekiryukeikaikuiki/{z}/{x}/{y}.png',
+    'https://disaportaldata.gsi.go.jp/raster/05_kyukeishakeikaikuiki/{z}/{x}/{y}.png',
+    'https://disaportaldata.gsi.go.jp/raster/05_jisuberikeikaikuiki/{z}/{x}/{y}.png',
+  ],
+  surge: ['https://disaportaldata.gsi.go.jp/raster/03_hightide_l2_shinsuishin_data/{z}/{x}/{y}.png'],
+  tsun:  ['https://disaportaldata.gsi.go.jp/raster/04_tsunami_newlegend_data/{z}/{x}/{y}.png'],
+};
+const BLANK    = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const ATTR_H   = '© <a href="https://disaportal.gsi.go.jp/">ハザードマップポータルサイト</a>';
+const ATTR_GSI = '© <a href="https://www.gsi.go.jp/">国土地理院</a>';
+
+const BASE = {
+  pale: L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
+        {attribution:ATTR_GSI, maxZoom:18, minZoom:2}),
+  std:  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
+        {attribution:ATTR_GSI, maxZoom:18, minZoom:2}),
+  osm:  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {attribution:'© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom:19, minZoom:2}),
+};
+
+const map = L.map('map', {center:[34.34,134.05], zoom:13, layers:[BASE.pale]});
+let currentBase = 'pale';
+
+const layerGroups = {};
+const layerOn = {flood:true, land:true, surge:true, tsun:true};
+
+Object.entries(HAZARD_DEF).forEach(([key, urls]) => {
+  const group = urls.map(url => L.tileLayer(url, {
+    opacity:0.7, minZoom:2, maxZoom:17, attribution:ATTR_H, errorTileUrl:BLANK,
+  }));
+  layerGroups[key] = group;
+  group.forEach(l => l.addTo(map));
+});
+
+map.on('zoom', () => { document.getElementById('zval').textContent = map.getZoom(); });
+document.getElementById('zval').textContent = map.getZoom();
+
+function setBase(key) {
+  map.removeLayer(BASE[currentBase]);
+  BASE[key].addTo(map);
+  Object.entries(layerGroups).forEach(([k, grp]) => {
+    if (layerOn[k]) { grp.forEach(l => { l.remove(); l.addTo(map); }); }
+  });
+  currentBase = key;
+  document.querySelectorAll('.base-opt').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.base-opt[onclick="setBase('${key}')"]`).classList.add('active');
+  showToast({pale:'淡色地図', std:'標準地図', osm:'OpenStreetMap'}[key] + 'に切替');
+}
+
+function toggleLayer(key) {
+  const card = document.querySelector(`.lcard[data-key="${key}"]`);
+  if (layerOn[key]) {
+    layerGroups[key].forEach(l => l.remove());
+    layerOn[key] = false;
+    card.classList.remove('on');
+  } else {
+    layerGroups[key].forEach(l => l.addTo(map));
+    layerOn[key] = true;
+    card.classList.add('on');
+  }
+  document.getElementById('layer-count').textContent =
+    `${Object.values(layerOn).filter(Boolean).length}/4 ON`;
+}
+
+function setOp(key, val) {
+  event.stopPropagation();
+  layerGroups[key].forEach(l => l.setOpacity(val / 100));
+  document.getElementById(`ov-${key}`).textContent = val;
+}
+
+document.querySelectorAll('input[type=range]').forEach(el => {
+  el.addEventListener('click',       e => e.stopPropagation());
+  el.addEventListener('pointerdown', e => e.stopPropagation());
+});
+
+// ─────────────────────────────────────────────────────
+// GPS & 位置共有
+// ─────────────────────────────────────────────────────
+let gpsMarker = null, gpsCircle = null;
+let watching  = false, watchId = null;
+let lastLat = null, lastLng = null, lastAcc = null;
+let uploadTimer = null;
+const UPLOAD_INTERVAL_MS = 15000; // 15秒ごとにFirebaseへ送信
+
+function makeMyIcon() {
+  const initials = (myName || '?').slice(0, 2);
+  return L.divIcon({
+    html: `<div style="
+      width:28px;height:28px;background:${MY_COLOR};
+      border:3px solid #fff;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 0 0 5px ${MY_COLOR}44, 0 3px 10px rgba(0,0,0,.5);
+      font-size:10px;font-weight:700;color:#fff;position:relative;
+    ">${initials}</div>
+    <div style="
+      position:absolute;top:30px;left:50%;transform:translateX(-50%);
+      background:${MY_COLOR};color:#fff;font-size:9px;white-space:nowrap;
+      padding:1px 6px;border-radius:4px;font-weight:700;
+      font-family:'Noto Sans JP',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);
+    ">${myName}（自分）</div>`,
+    iconSize:[28,28], iconAnchor:[14,14], className:''
+  });
+}
+
+function makeOtherIcon(name, color) {
+  const initials = (name || '?').slice(0, 2);
+  return L.divIcon({
+    html: `<div style="
+      width:24px;height:24px;background:${color};
+      border:2.5px solid rgba(255,255,255,.85);border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 8px rgba(0,0,0,.5);
+      font-size:9px;font-weight:700;color:#fff;
+    ">${initials}</div>
+    <div style="
+      position:absolute;top:26px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.78);color:#fff;font-size:9px;white-space:nowrap;
+      padding:1px 5px;border-radius:3px;font-weight:500;
+      font-family:'Noto Sans JP',sans-serif;
+    ">${name}</div>`,
+    iconSize:[24,24], iconAnchor:[12,12], className:''
+  });
+}
+
+function uploadLocation(lat, lng, accuracy, nameOnly) {
+  if (!locRef || !myName) return;
+  const payload = nameOnly
+    ? { name: myName }                     // 名前変更のみ
+    : {
+        name:     myName,
+        lat:      parseFloat((lat).toFixed(6)),
+        lng:      parseFloat((lng).toFixed(6)),
+        accuracy: Math.round(accuracy),
+        ts:       firebase.database.ServerValue.TIMESTAMP,
+      };
+  locRef.child(MY_ID).update(payload)
+    .then(() => { document.getElementById('share-dot').className = 'on'; })
+    .catch(() => { document.getElementById('share-dot').className = 'err'; showToast('通信エラー — 再試行中'); });
+}
+
+function startPeriodicUpload() {
+  stopPeriodicUpload();
+  uploadTimer = setInterval(() => {
+    if (lastLat !== null) uploadLocation(lastLat, lastLng, lastAcc);
+  }, UPLOAD_INTERVAL_MS);
+}
+
+function stopPeriodicUpload() {
+  if (uploadTimer) { clearInterval(uploadTimer); uploadTimer = null; }
+}
+
+function removeMyLocation() {
+  if (locRef) locRef.child(MY_ID).remove();
+  document.getElementById('share-dot').className = '';
+}
+
+const gpsBtnEl = document.getElementById('gps-btn');
+
+gpsBtnEl.addEventListener('click', () => {
+  if (watching) {
+    // GPS 停止
+    navigator.geolocation.clearWatch(watchId);
+    watching = false; watchId = null;
+    stopPeriodicUpload();
+    gpsBtnEl.className = 'map-btn'; gpsBtnEl.textContent = '📍';
+    if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
+    if (gpsCircle) { map.removeLayer(gpsCircle); gpsCircle = null; }
+    removeMyLocation();
+    showToast('GPS追跡・位置共有を停止');
+    return;
+  }
+
+  if (!navigator.geolocation) { showToast('GPSに対応していません'); return; }
+  if (!myName) { openSetup(); return; }
+  if (!FIREBASE_READY) { showToast('Firebase設定が未完了です'); return; }
+
+  gpsBtnEl.className = 'map-btn locating'; gpsBtnEl.textContent = '⏳';
+  showToast('GPS取得中...');
+
+  // 切断時に自動でデータ削除（Firebase onDisconnect）
+  if (locRef) locRef.child(MY_ID).onDisconnect().remove();
+
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      lastLat = lat; lastLng = lng; lastAcc = accuracy;
+      watching = true;
+      gpsBtnEl.className = 'map-btn located'; gpsBtnEl.textContent = '🔵';
+
+      const icon = makeMyIcon();
+      if (!gpsMarker) {
+        gpsMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 }).addTo(map);
+        gpsCircle = L.circle([lat, lng], {
+          radius: accuracy, color: MY_COLOR, fillColor: MY_COLOR,
+          fillOpacity: .1, weight: 1.5, dashArray: '4 4'
+        }).addTo(map);
+        map.setView([lat, lng], Math.max(map.getZoom(), 14));
+        showToast(`現在地取得 ±${Math.round(accuracy)}m — 共有中`);
+        // 初回は即座にアップロード
+        uploadLocation(lat, lng, accuracy);
+        startPeriodicUpload();
+      } else {
+        gpsMarker.setLatLng([lat, lng]).setIcon(icon);
+        gpsCircle.setLatLng([lat, lng]).setRadius(accuracy);
+      }
+    },
+    err => {
+      gpsBtnEl.className = 'map-btn'; gpsBtnEl.textContent = '📍';
+      showToast({ 1:'位置情報の許可が必要です', 2:'位置を取得できません', 3:'タイムアウト' }[err.code] || 'GPSエラー');
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
+});
+
+// ─────────────────────────────────────────────────────
+// 他デバイスのマーカー管理（Firebaseリアルタイム受信）
+// ─────────────────────────────────────────────────────
+const otherMarkers = {}; // { deviceId: L.Marker }
+
+function formatAge(ts) {
+  if (!ts) return '不明';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec <  60)   return `${sec}秒前`;
+  if (sec < 3600)  return `${Math.floor(sec / 60)}分前`;
+  return `${Math.floor(sec / 3600)}時間前`;
+}
+
+function isStale(ts) {
+  return ts && (Date.now() - ts) > 120000; // 2分以上更新なし
+}
+
+if (locRef) {
+  locRef.on('value', snapshot => {
+    const data = snapshot.val() || {};
+    const currentIds = new Set(Object.keys(data));
+
+    // 削除されたデバイスのマーカーを除去
+    Object.keys(otherMarkers).forEach(id => {
+      if (!currentIds.has(id)) {
+        map.removeLayer(otherMarkers[id]);
+        delete otherMarkers[id];
+      }
+    });
+
+    // 追加 / 更新
+    Object.entries(data).forEach(([id, d]) => {
+      if (id === MY_ID) return; // 自分は別途管理
+      if (!d.lat || !d.lng) return;
+
+      const color   = colorForId(id);
+      const icon    = makeOtherIcon(d.name || '?', color);
+      const age     = formatAge(d.ts);
+      const stale   = isStale(d.ts);
+      const popupHtml = `
+        <div style="min-width:150px">
+          <div style="font-weight:700;color:${color};font-size:14px;margin-bottom:4px">${d.name || '不明'}</div>
+          <div style="color:var(--muted);font-size:11px">更新: ${age}</div>
+          <div style="color:var(--muted);font-size:11px">精度: ±${d.accuracy || '?'}m</div>
+          ${stale ? '<div style="color:var(--tsun);font-size:10px;margin-top:4px">⚠ 2分以上更新なし</div>' : ''}
+          <div style="color:#3a4458;font-size:9px;margin-top:6px">${(d.lat||'').toFixed?.(5)}, ${(d.lng||'').toFixed?.(5)}</div>
+        </div>`;
+
+      if (otherMarkers[id]) {
+        otherMarkers[id].setLatLng([d.lat, d.lng]).setIcon(icon);
+        otherMarkers[id].getPopup()?.setContent(popupHtml);
+      } else {
+        otherMarkers[id] = L.marker([d.lat, d.lng], { icon, zIndexOffset: 1000 })
+          .bindPopup(popupHtml, { className: 'dev-popup', maxWidth: 220 })
+          .addTo(map);
+      }
+    });
+
+    updateDeviceList(data);
+  });
+}
+
+// ─────────────────────────────────────────────────────
+// デバイス一覧パネルの更新
+// ─────────────────────────────────────────────────────
+function updateDeviceList(data) {
+  const body  = document.getElementById('device-list-body');
+  const badge = document.getElementById('online-badge');
+  const count = Object.keys(data).length;
+  badge.textContent = `${count}台`;
+  body.innerHTML = '';
+
+  if (count === 0) {
+    body.innerHTML = '<div class="dev-empty">接続中のデバイスなし</div>';
+    return;
+  }
+
+  // タイムスタンプ降順でソート
+  Object.entries(data)
+    .sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))
+    .forEach(([id, d]) => {
+      const color = colorForId(id);
+      const isMe  = id === MY_ID;
+      const age   = formatAge(d.ts);
+      const stale = isStale(d.ts);
+
+      const row = document.createElement('div');
+      row.className = 'dev-row' + (stale ? ' stale' : '');
+      row.innerHTML = `
+        <div class="dev-dot" style="background:${color}"></div>
+        <div class="dev-name">${d.name || '?'}${isMe ? ' <span style="color:var(--muted);font-weight:400">(自分)</span>' : ''}</div>
+        <div class="dev-info">${age}<br>±${d.accuracy || '?'}m</div>`;
+
+      // タップで地図をその位置に移動
+      row.addEventListener('click', () => {
+        if (!d.lat || !d.lng) return;
+        map.setView([d.lat, d.lng], Math.max(map.getZoom(), 15));
+        if (!isMe && otherMarkers[id]) otherMarkers[id].openPopup();
+        deviceListEl.classList.remove('open');
+        listBtnEl.classList.remove('open');
+      });
+      body.appendChild(row);
+    });
+}
+
+// ─────────────────────────────────────────────────────
+// デバイス一覧ボタン
+// ─────────────────────────────────────────────────────
+const listBtnEl    = document.getElementById('list-btn');
+const deviceListEl = document.getElementById('device-list');
+
+listBtnEl.addEventListener('click', () => {
+  const open = deviceListEl.classList.toggle('open');
+  listBtnEl.classList.toggle('open', open);
+});
+
+// バッジタップでも一覧を開く
+document.getElementById('online-badge').addEventListener('click', () => {
+  const open = deviceListEl.classList.toggle('open');
+  listBtnEl.classList.toggle('open', open);
+});
+
+// 地図タップで一覧を閉じる
+map.on('click', () => {
+  deviceListEl.classList.remove('open');
+  listBtnEl.classList.remove('open');
+});
+
+// ─────────────────────────────────────────────────────
+// トースト通知
+// ─────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─────────────────────────────────────────────────────
+// Firebase未設定の場合の警告
+// ─────────────────────────────────────────────────────
+if (!FIREBASE_READY) {
+  setTimeout(() => showToast('⚠ Firebase設定が必要です（HTMLを編集してください）'), 1000);
+}
+
+// ─────────────────────────────────────────────────────
+// ページ離脱時に位置情報を削除
+// ─────────────────────────────────────────────────────
+window.addEventListener('beforeunload', () => {
+  if (watching) removeMyLocation();
+});
+window.addEventListener('pagehide', () => {
+  if (watching) removeMyLocation();
+});
+</script>
+</body>
+</html>
