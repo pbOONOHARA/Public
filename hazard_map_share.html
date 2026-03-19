@@ -117,6 +117,9 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
   color:var(--muted);padding:8px 16px 4px;display:flex;align-items:center;gap:6px;
 }
 #layers-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px 14px}
+@media(max-width:480px){
+  #layers-grid{grid-template-columns:1fr}
+}
 .lcard{
   background:var(--panel);border:1.5px solid var(--border);border-radius:12px;
   padding:10px 12px;cursor:pointer;transition:background .15s,border-color .15s;
@@ -125,7 +128,7 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
 .lcard.on{background:rgba(255,255,255,.04)}
 .lcard-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .lcard-icon{font-size:18px;line-height:1}
-.lcard-label{font-size:12px;font-weight:700;flex:1}
+.lcard-label{font-size:12px;font-weight:700;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .lcard-toggle{
   width:30px;height:17px;background:var(--border);border-radius:9px;
   position:relative;transition:background .2s;flex-shrink:0;
