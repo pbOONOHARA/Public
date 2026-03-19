@@ -538,8 +538,17 @@ function makeMyIcon() {
   });
 }
 
-function makeOtherIcon(name, color) {
+function formatAgeMarker(ts) {
+  if (!ts) return '';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 60)   return '';                              // 1分未満は非表示
+  if (sec < 3600) return `${Math.floor(sec / 60)}分前`;
+  return `${Math.floor(sec / 3600)}時間前`;
+}
+
+function makeOtherIcon(name, color, ts) {
   const initials = (name || '?').slice(0, 2);
+  const ageText  = formatAgeMarker(ts);
   return L.divIcon({
     html: `<div style="
       width:24px;height:24px;background:${color};
@@ -551,9 +560,9 @@ function makeOtherIcon(name, color) {
     <div style="
       position:absolute;top:26px;left:50%;transform:translateX(-50%);
       background:rgba(0,0,0,.78);color:#fff;font-size:9px;white-space:nowrap;
-      padding:1px 5px;border-radius:3px;font-weight:500;
-      font-family:'Noto Sans JP',sans-serif;
-    ">${name}</div>`,
+      padding:2px 5px;border-radius:3px;font-weight:500;
+      font-family:'Noto Sans JP',sans-serif;text-align:center;
+    ">${name}${ageText ? `<br><span style="font-size:8px;opacity:.75">${ageText}</span>` : ''}</div>`,
     iconSize:[24,24], iconAnchor:[12,12], className:''
   });
 }
@@ -613,8 +622,7 @@ gpsBtnEl.addEventListener('click', () => {
   gpsBtnEl.className = 'map-btn locating'; gpsBtnEl.textContent = '⏳';
   showToast('GPS取得中...');
 
-  // 切断時に自動でデータ削除（Firebase onDisconnect）
-  if (locRef) locRef.child(MY_ID).onDisconnect().remove();
+  // onDisconnect は設定しない → タブを閉じても12時間ピンを残す
 
   watchId = navigator.geolocation.watchPosition(
     pos => {
@@ -652,6 +660,28 @@ gpsBtnEl.addEventListener('click', () => {
 // 他デバイスのマーカー管理（Firebaseリアルタイム受信）
 // ─────────────────────────────────────────────────────
 const otherMarkers = {}; // { deviceId: L.Marker }
+const deviceData   = {}; // { deviceId: data } — アイコン時刻更新用
+
+// 12時間以上古いデータをFirebaseから削除（起動時に1回実行）
+function cleanupOldLocations() {
+  if (!locRef) return;
+  const cutoff = Date.now() - 12 * 60 * 60 * 1000; // 12時間前
+  locRef.once('value', snap => {
+    const data = snap.val() || {};
+    Object.entries(data).forEach(([id, d]) => {
+      if (d.ts && d.ts < cutoff) locRef.child(id).remove();
+    });
+  });
+}
+cleanupOldLocations();
+
+// 30秒ごとにマーカーの時刻ラベルを再描画
+setInterval(() => {
+  Object.entries(deviceData).forEach(([id, d]) => {
+    if (id === MY_ID || !otherMarkers[id]) return;
+    otherMarkers[id].setIcon(makeOtherIcon(d.name || '?', colorForId(id), d.ts));
+  });
+}, 30000);
 
 function formatAge(ts) {
   if (!ts) return '不明';
@@ -683,8 +713,9 @@ if (locRef) {
       if (id === MY_ID) return; // 自分は別途管理
       if (!d.lat || !d.lng) return;
 
+      deviceData[id] = d; // 時刻更新用に保存
       const color   = colorForId(id);
-      const icon    = makeOtherIcon(d.name || '?', color);
+      const icon    = makeOtherIcon(d.name || '?', color, d.ts);
       const age     = formatAge(d.ts);
       const stale   = isStale(d.ts);
       const popupHtml = `
@@ -795,15 +826,8 @@ if (!FIREBASE_READY) {
   setTimeout(() => showToast('⚠ Firebase設定が必要です（HTMLを編集してください）'), 1000);
 }
 
-// ─────────────────────────────────────────────────────
-// ページ離脱時に位置情報を削除
-// ─────────────────────────────────────────────────────
-window.addEventListener('beforeunload', () => {
-  if (watching) removeMyLocation();
-});
-window.addEventListener('pagehide', () => {
-  if (watching) removeMyLocation();
-});
+// タブを閉じてもピンは残す（12時間後に自動削除）
+// ※ GPS停止ボタンを押した場合のみ removeMyLocation() が呼ばれる
 </script>
 </body>
 </html>
