@@ -164,13 +164,16 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 }
 #setup-box h2{font-size:17px;font-weight:700;margin-bottom:6px}
 #setup-box p{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.7}
-#name-input-field{
+#name-input-field,#comment-input-field{
   width:100%;padding:13px 14px;font-size:16px;
   background:var(--bg);border:1.5px solid var(--border);
   border-radius:10px;color:var(--text);font-family:'Noto Sans JP',sans-serif;
-  outline:none;margin-bottom:14px;
+  outline:none;margin-bottom:14px;box-sizing:border-box;
 }
-#name-input-field:focus{border-color:var(--accent)}
+#name-input-field:focus,#comment-input-field:focus{border-color:var(--accent)}
+#comment-input-field{
+  font-size:13px;resize:none;height:72px;line-height:1.6;
+}
 #setup-ok{
   width:100%;padding:14px;font-size:14px;font-weight:700;
   background:var(--accent);color:#fff;border:none;
@@ -217,6 +220,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     名前・車番等自由に設定できます。<br>
     <span style="color:var(--accent)">例：佐藤、suzuki、1234</span></p>
     <input type="text" id="name-input-field" placeholder="なまえ（最大10文字）" maxlength="10" autocomplete="off" autocorrect="off">
+    <textarea id="comment-input-field" placeholder="コメント（任意・最大100文字）" maxlength="100" autocomplete="off" autocorrect="off"></textarea>
     <button id="setup-ok" disabled>この名前で開始</button>
   </div>
 </div>
@@ -385,26 +389,31 @@ function colorForId(id) {
 const MY_ID    = getOrCreateDeviceId();
 const MY_COLOR = colorForId(MY_ID);
 let myName     = localStorage.getItem('evacMap_deviceName') || '';
+let myComment  = localStorage.getItem('evacMap_deviceComment') || '';
 
 // ─────────────────────────────────────────────────────
 // セットアップモーダル（初回 / 名前変更）
 // ─────────────────────────────────────────────────────
 const setupModal  = document.getElementById('setup-modal');
 const nameField   = document.getElementById('name-input-field');
+const commentField = document.getElementById('comment-input-field');
 const setupOkBtn  = document.getElementById('setup-ok');
 
 function openSetup() {
   nameField.value = myName;
+  commentField.value = myComment;
   setupOkBtn.disabled = !nameField.value.trim();
   setupModal.style.display = 'flex';
   setTimeout(() => nameField.focus(), 150);
 }
 
-function applyName(name) {
+function applySetup(name, comment) {
   myName = name.trim();
+  myComment = comment.trim();
   localStorage.setItem('evacMap_deviceName', myName);
+  localStorage.setItem('evacMap_deviceComment', myComment);
   setupModal.style.display = 'none';
-  // GPS共有中なら名前を更新
+  // GPS共有中なら名前・コメントを更新
   if (watching && locRef) uploadLocation(null, null, null, true);
 }
 
@@ -412,10 +421,16 @@ nameField.addEventListener('input', () => {
   setupOkBtn.disabled = !nameField.value.trim();
 });
 nameField.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && nameField.value.trim()) applyName(nameField.value);
+  if (e.key === 'Enter' && nameField.value.trim()) applySetup(nameField.value, commentField.value);
+});
+commentField.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey && nameField.value.trim()) {
+    e.preventDefault();
+    applySetup(nameField.value, commentField.value);
+  }
 });
 setupOkBtn.addEventListener('click', () => {
-  if (nameField.value.trim()) applyName(nameField.value);
+  if (nameField.value.trim()) applySetup(nameField.value, commentField.value);
 });
 
 // 初回は名前未設定なのでモーダルを表示
@@ -570,9 +585,10 @@ function makeOtherIcon(name, color, ts) {
 function uploadLocation(lat, lng, accuracy, nameOnly) {
   if (!locRef || !myName) return;
   const payload = nameOnly
-    ? { name: myName }                     // 名前変更のみ
+    ? { name: myName, comment: myComment }   // 名前・コメント変更のみ
     : {
         name:     myName,
+        comment:  myComment,
         lat:      parseFloat((lat).toFixed(6)),
         lng:      parseFloat((lng).toFixed(6)),
         accuracy: Math.round(accuracy),
@@ -721,6 +737,7 @@ if (locRef) {
       const popupHtml = `
         <div style="min-width:150px">
           <div style="font-weight:700;color:${color};font-size:14px;margin-bottom:4px">${d.name || '不明'}</div>
+          ${d.comment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
           <div style="color:var(--muted);font-size:11px">更新: ${age}</div>
           <div style="color:var(--muted);font-size:11px">精度: ±${d.accuracy || '?'}m</div>
           ${stale ? '<div style="color:var(--tsun);font-size:10px;margin-top:4px">⚠ 2分以上更新なし</div>' : ''}
@@ -769,7 +786,10 @@ function updateDeviceList(data) {
       row.className = 'dev-row' + (stale ? ' stale' : '');
       row.innerHTML = `
         <div class="dev-dot" style="background:${color}"></div>
-        <div class="dev-name">${d.name || '?'}${isMe ? ' <span style="color:var(--muted);font-weight:400">(自分)</span>' : ''}</div>
+        <div class="dev-name">
+          ${d.name || '?'}${isMe ? ' <span style="color:var(--muted);font-weight:400">(自分)</span>' : ''}
+          ${d.comment ? `<div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
+        </div>
         <div class="dev-info">${age}<br>±${d.accuracy || '?'}m</div>`;
 
       // タップで地図をその位置に移動
