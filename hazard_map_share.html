@@ -413,6 +413,8 @@ function applySetup(name, comment) {
   localStorage.setItem('evacMap_deviceName', myName);
   localStorage.setItem('evacMap_deviceComment', myComment);
   setupModal.style.display = 'none';
+  // 自分のマーカーポップアップを更新
+  if (gpsMarker) gpsMarker.getPopup()?.setContent(makeMyPopupHtml());
   // GPS共有中なら名前・コメントを更新
   if (watching && locRef) uploadLocation(null, null, null, true);
 }
@@ -533,6 +535,13 @@ let lastLat = null, lastLng = null, lastAcc = null;
 let uploadTimer = null;
 const UPLOAD_INTERVAL_MS = 15000; // 15秒ごとにFirebaseへ送信
 
+function makeMyPopupHtml() {
+  return `<div style="min-width:150px">
+    <div style="font-weight:700;color:${MY_COLOR};font-size:14px;margin-bottom:4px">${myName}（自分）</div>
+    ${myComment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${myComment}</div>` : ''}
+  </div>`;
+}
+
 function makeMyIcon() {
   const initials = (myName || '?').slice(0, 2);
   return L.divIcon({
@@ -649,7 +658,9 @@ gpsBtnEl.addEventListener('click', () => {
 
       const icon = makeMyIcon();
       if (!gpsMarker) {
-        gpsMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 }).addTo(map);
+        gpsMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 })
+          .bindPopup(makeMyPopupHtml(), { className: 'dev-popup', maxWidth: 220 })
+          .addTo(map);
         gpsCircle = L.circle([lat, lng], {
           radius: accuracy, color: MY_COLOR, fillColor: MY_COLOR,
           fillOpacity: .1, weight: 1.5, dashArray: '4 4'
