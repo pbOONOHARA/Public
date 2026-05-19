@@ -198,6 +198,10 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--muted)!important;font-size:9px!important;border-radius:6px 0 0 0!important}
 .leaflet-control-attribution a{color:var(--accent)!important}
 .leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 210px)!important}
+@media (max-width:600px){
+  #panel{display:none!important}
+  .leaflet-control-zoom{margin-bottom:calc(env(safe-area-inset-bottom,0) + 14px)!important}
+}
 /* デバイスポップアップ */
 .dev-popup .leaflet-popup-content-wrapper{
   background:rgba(26,31,46,.97);border:1px solid var(--border);
