@@ -200,7 +200,26 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 .leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 210px)!important}
 @media (max-width:600px){
   #panel{display:none!important}
-  .leaflet-control-zoom{margin-bottom:calc(env(safe-area-inset-bottom,0) + 14px)!important}
+  .leaflet-control-zoom{margin-bottom:calc(env(safe-area-inset-bottom,0) + 76px)!important}
+}
+/* ── ステータスバー ── */
+#status-bar{
+  position:fixed;left:0;right:0;bottom:210px;z-index:999;
+  background:rgba(26,31,46,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-top:1px solid var(--border);padding:8px 10px;
+  display:none;gap:8px;
+}
+#status-bar.active{display:flex}
+.st-btn{
+  flex:1;height:48px;border-radius:10px;border:2px solid var(--border);
+  background:none;color:var(--muted);font-size:13px;font-weight:700;
+  font-family:'Noto Sans JP',sans-serif;cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.st-btn.active{color:#fff;background:var(--st-color);border-color:var(--st-color)}
+@media (max-width:600px){
+  #status-bar{bottom:0;padding-bottom:calc(env(safe-area-inset-bottom,0) + 8px)}
 }
 /* デバイスポップアップ */
 .dev-popup .leaflet-popup-content-wrapper{
@@ -321,6 +340,13 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
   </div>
 </div>
 
+<!-- ステータスバー（GPS ON時のみ表示） -->
+<div id="status-bar">
+  <button class="st-btn" data-key="safe"    style="--st-color:#3dba6f">🟢 安全</button>
+  <button class="st-btn" data-key="moving"  style="--st-color:#f5a623">🟡 避難中</button>
+  <button class="st-btn" data-key="waiting" style="--st-color:#4da6ff">🔵 待機中</button>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -394,6 +420,14 @@ const MY_ID    = getOrCreateDeviceId();
 const MY_COLOR = colorForId(MY_ID);
 let myName     = localStorage.getItem('evacMap_deviceName') || '';
 let myComment  = localStorage.getItem('evacMap_deviceComment') || '';
+
+// ステータス定義
+const STATUSES = {
+  safe:    { label:'安全',   color:'#3dba6f', emoji:'🟢' },
+  moving:  { label:'避難中', color:'#f5a623', emoji:'🟡' },
+  waiting: { label:'待機中', color:'#4da6ff', emoji:'🔵' },
+};
+let myStatus = 'safe';
 
 // ─────────────────────────────────────────────────────
 // セットアップモーダル（初回 / 名前変更）
@@ -540,20 +574,23 @@ let uploadTimer = null;
 const UPLOAD_INTERVAL_MS = 15000; // 15秒ごとにFirebaseへ送信
 
 function makeMyPopupHtml() {
+  const st = STATUSES[myStatus];
   return `<div style="min-width:150px">
     <div style="font-weight:700;color:${MY_COLOR};font-size:14px;margin-bottom:4px">${myName}（自分）</div>
+    ${st ? `<div style="margin-bottom:6px"><span style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}66;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${st.emoji} ${st.label}</span></div>` : ''}
     ${myComment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${myComment}</div>` : ''}
   </div>`;
 }
 
 function makeMyIcon() {
   const initials = (myName || '?').slice(0, 2);
+  const st = STATUSES[myStatus] || STATUSES.safe;
   return L.divIcon({
     html: `<div style="
       width:28px;height:28px;background:${MY_COLOR};
       border:3px solid #fff;border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      box-shadow:0 0 0 5px ${MY_COLOR}44, 0 3px 10px rgba(0,0,0,.5);
+      box-shadow:0 0 0 5px ${st.color}88, 0 3px 10px rgba(0,0,0,.5);
       font-size:10px;font-weight:700;color:#fff;position:relative;
     ">${initials}</div>
     <div style="
@@ -561,7 +598,7 @@ function makeMyIcon() {
       background:${MY_COLOR};color:#fff;font-size:9px;white-space:nowrap;
       padding:1px 6px;border-radius:4px;font-weight:700;
       font-family:'Noto Sans JP',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4);
-    ">${myName}（自分）</div>`,
+    ">${st.emoji}${myName}（自分）</div>`,
     iconSize:[28,28], iconAnchor:[14,14], className:''
   });
 }
@@ -574,15 +611,19 @@ function formatAgeMarker(ts) {
   return `${Math.floor(sec / 3600)}時間前`;
 }
 
-function makeOtherIcon(name, color, ts) {
+function makeOtherIcon(name, color, ts, status) {
   const initials = (name || '?').slice(0, 2);
   const ageText  = formatAgeMarker(ts);
+  const st       = status && STATUSES[status] ? STATUSES[status] : null;
+  const shadow   = st
+    ? `0 2px 8px rgba(0,0,0,.5),0 0 0 3px ${st.color}`
+    : `0 2px 8px rgba(0,0,0,.5)`;
   return L.divIcon({
     html: `<div style="
       width:24px;height:24px;background:${color};
       border:2.5px solid rgba(255,255,255,.85);border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      box-shadow:0 2px 8px rgba(0,0,0,.5);
+      box-shadow:${shadow};
       font-size:9px;font-weight:700;color:#fff;
     ">${initials}</div>
     <div style="
@@ -590,7 +631,7 @@ function makeOtherIcon(name, color, ts) {
       background:rgba(0,0,0,.78);color:#fff;font-size:9px;white-space:nowrap;
       padding:2px 5px;border-radius:3px;font-weight:500;
       font-family:'Noto Sans JP',sans-serif;text-align:center;
-    ">${name}${ageText ? `<br><span style="font-size:8px;opacity:.75">${ageText}</span>` : ''}</div>`,
+    ">${st ? st.emoji : ''}${name}${ageText ? `<br><span style="font-size:8px;opacity:.75">${ageText}</span>` : ''}</div>`,
     iconSize:[24,24], iconAnchor:[12,12], className:''
   });
 }
@@ -602,6 +643,7 @@ function uploadLocation(lat, lng, accuracy, nameOnly) {
     : {
         name:     myName,
         comment:  myComment,
+        status:   myStatus,
         lat:      parseFloat((lat).toFixed(6)),
         lng:      parseFloat((lng).toFixed(6)),
         accuracy: Math.round(accuracy),
@@ -640,6 +682,7 @@ gpsBtnEl.addEventListener('click', () => {
     if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
     if (gpsCircle) { map.removeLayer(gpsCircle); gpsCircle = null; }
     removeMyLocation();
+    document.getElementById('status-bar').classList.remove('active');
     showToast('GPS追跡・位置共有を停止');
     return;
   }
@@ -662,6 +705,11 @@ gpsBtnEl.addEventListener('click', () => {
 
       const icon = makeMyIcon();
       if (!gpsMarker) {
+        // GPS初回取得：ステータスを「安全」に自動セット
+        myStatus = 'safe';
+        document.querySelectorAll('.st-btn').forEach(b => b.classList.toggle('active', b.dataset.key === 'safe'));
+        document.getElementById('status-bar').classList.add('active');
+
         gpsMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 })
           .bindPopup(makeMyPopupHtml(), { className: 'dev-popup', maxWidth: 220 })
           .addTo(map);
@@ -746,12 +794,14 @@ if (locRef) {
 
       deviceData[id] = d; // 時刻更新用に保存
       const color   = colorForId(id);
-      const icon    = makeOtherIcon(d.name || '?', color, d.ts);
+      const icon    = makeOtherIcon(d.name || '?', color, d.ts, d.status);
       const age     = formatAge(d.ts);
       const stale   = isStale(d.ts);
+      const dSt     = d.status && STATUSES[d.status] ? STATUSES[d.status] : null;
       const popupHtml = `
         <div style="min-width:150px">
           <div style="font-weight:700;color:${color};font-size:14px;margin-bottom:4px">${d.name || '不明'}</div>
+          ${dSt ? `<div style="margin-bottom:6px"><span style="background:${dSt.color}22;color:${dSt.color};border:1px solid ${dSt.color}66;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${dSt.emoji} ${dSt.label}</span></div>` : ''}
           ${d.comment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
           <div style="color:var(--muted);font-size:11px">更新: ${age}</div>
           <div style="color:var(--muted);font-size:11px">精度: ±${d.accuracy || '?'}m</div>
@@ -799,10 +849,12 @@ function updateDeviceList(data) {
 
       const row = document.createElement('div');
       row.className = 'dev-row' + (stale ? ' stale' : '');
+      const rSt = d.status && STATUSES[d.status] ? STATUSES[d.status] : null;
       row.innerHTML = `
         <div class="dev-dot" style="background:${color}"></div>
         <div class="dev-name">
           ${d.name || '?'}${isMe ? ' <span style="color:var(--muted);font-weight:400">(自分)</span>' : ''}
+          ${rSt ? `<span style="margin-left:5px;font-size:9px;padding:1px 5px;border-radius:3px;background:${rSt.color}33;color:${rSt.color};font-weight:700">${rSt.emoji}${rSt.label}</span>` : ''}
           ${d.comment ? `<div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
         </div>
         <div class="dev-info">${age}<br>±${d.accuracy || '?'}m</div>`;
@@ -860,6 +912,26 @@ function showToast(msg) {
 if (!FIREBASE_READY) {
   setTimeout(() => showToast('⚠ Firebase設定が必要です（HTMLを編集してください）'), 1000);
 }
+
+// ─────────────────────────────────────────────────────
+// ステータスボタン
+// ─────────────────────────────────────────────────────
+document.querySelectorAll('.st-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    myStatus = btn.dataset.key;
+    document.querySelectorAll('.st-btn').forEach(b => b.classList.toggle('active', b.dataset.key === myStatus));
+    // マーカー・ポップアップを即時更新
+    if (gpsMarker) {
+      gpsMarker.setIcon(makeMyIcon());
+      gpsMarker.getPopup()?.setContent(makeMyPopupHtml());
+    }
+    // Firebase即時更新
+    if (locRef && myName && watching) {
+      locRef.child(MY_ID).update({ status: myStatus });
+    }
+    showToast(`ステータス：${STATUSES[myStatus].emoji} ${STATUSES[myStatus].label}`);
+  });
+});
 
 // タブを閉じてもピンは残す（12時間後に自動削除）
 // ※ GPS停止ボタンを押した場合のみ removeMyLocation() が呼ばれる
