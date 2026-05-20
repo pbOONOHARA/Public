@@ -116,17 +116,17 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
   font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--muted);padding:5px 12px 2px;display:flex;align-items:center;gap:6px;
 }
-#layers-grid{display:grid;grid-template-columns:1fr;gap:4px;padding:6px 10px 8px}
+#layers-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:6px 10px 8px}
 .lcard{
   background:var(--panel);border:1.5px solid var(--border);border-radius:9px;
   padding:6px 10px;cursor:pointer;transition:background .15s,border-color .15s;
   -webkit-tap-highlight-color:transparent;user-select:none;
 }
 .lcard.on{background:rgba(255,255,255,.04)}
-.lcard-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.lcard-icon{font-size:15px;line-height:1}
-.lcard-label{font-size:11px;font-weight:700}
-.lcard-name{flex:1;min-width:0}
+.lcard-top{display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.lcard-icon{font-size:14px;line-height:1;flex-shrink:0}
+.lcard-label{font-size:11px;font-weight:700;flex-shrink:0;white-space:nowrap}
+.lcard-sub{font-size:8px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lcard-toggle{
   width:30px;height:17px;background:var(--border);border-radius:9px;
   position:relative;transition:background .2s;flex-shrink:0;
@@ -137,7 +137,6 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
 }
 .lcard.on .lcard-toggle{background:var(--color)}
 .lcard.on .lcard-toggle::after{transform:translateX(13px)}
-.lcard-sub{font-size:9px;color:var(--muted);margin:1px 0 0;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .op-row{display:flex;align-items:center;gap:5px}
 .op-label{font-size:8px;color:var(--muted);white-space:nowrap}
 input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:var(--border);border-radius:2px;outline:none}
@@ -198,7 +197,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 .leaflet-control-zoom a:last-child{border-bottom:none!important}
 .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--muted)!important;font-size:9px!important;border-radius:6px 0 0 0!important}
 .leaflet-control-attribution a{color:var(--accent)!important}
-.leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 295px)!important}
+.leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 205px)!important}
 @media (max-width:600px){
   #panel{display:none!important}
   .leaflet-control-zoom{margin-bottom:calc(env(safe-area-inset-bottom,0) + 76px)!important}
@@ -289,7 +288,8 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="flood" onclick="toggleLayer('flood')">
       <div class="lcard-top">
         <span class="lcard-icon">🌊</span>
-        <div class="lcard-name"><span class="lcard-label" style="color:var(--flood)">洪水</span><div class="lcard-sub">浸水想定区域 想定最大規模(L2)</div></div>
+        <span class="lcard-label" style="color:var(--flood)">洪水</span>
+        <span class="lcard-sub">浸水想定区域 L2</span>
         <div class="lcard-toggle"></div>
       </div>
       <div class="op-row">
@@ -301,7 +301,8 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="land" onclick="toggleLayer('land')">
       <div class="lcard-top">
         <span class="lcard-icon">⛰️</span>
-        <div class="lcard-name"><span class="lcard-label" style="color:var(--land)">土砂災害</span><div class="lcard-sub">警戒区域 土石流・急傾斜・地すべり</div></div>
+        <span class="lcard-label" style="color:var(--land)">土砂災害</span>
+        <span class="lcard-sub">警戒区域 土石流等</span>
         <div class="lcard-toggle"></div>
       </div>
       <div class="op-row">
@@ -313,7 +314,8 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="surge" onclick="toggleLayer('surge')">
       <div class="lcard-top">
         <span class="lcard-icon">🌀</span>
-        <div class="lcard-name"><span class="lcard-label" style="color:var(--surge)">高潮</span><div class="lcard-sub">浸水想定区域 最大規模台風等</div></div>
+        <span class="lcard-label" style="color:var(--surge)">高潮</span>
+        <span class="lcard-sub">浸水想定 最大規模</span>
         <div class="lcard-toggle"></div>
       </div>
       <div class="op-row">
@@ -325,7 +327,8 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="tsun" onclick="toggleLayer('tsun')">
       <div class="lcard-top">
         <span class="lcard-icon">🌊</span>
-        <div class="lcard-name"><span class="lcard-label" style="color:var(--tsun)">津波</span><div class="lcard-sub">浸水想定 最大クラス</div></div>
+        <span class="lcard-label" style="color:var(--tsun)">津波</span>
+        <span class="lcard-sub">浸水想定 最大クラス</span>
         <div class="lcard-toggle"></div>
       </div>
       <div class="op-row">
