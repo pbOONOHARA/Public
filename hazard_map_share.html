@@ -111,21 +111,22 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
   border-top:1px solid var(--border);border-radius:20px 20px 0 0;
   padding-bottom:env(safe-area-inset-bottom,0);
 }
-#panel-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0}
+#panel-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:6px auto 0}
 #panel-title{
-  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--muted);padding:8px 16px 4px;display:flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);padding:5px 12px 2px;display:flex;align-items:center;gap:6px;
 }
-#layers-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px 14px}
+#layers-grid{display:grid;grid-template-columns:1fr;gap:4px;padding:6px 10px 8px}
 .lcard{
-  background:var(--panel);border:1.5px solid var(--border);border-radius:12px;
-  padding:10px 12px;cursor:pointer;transition:background .15s,border-color .15s;
+  background:var(--panel);border:1.5px solid var(--border);border-radius:9px;
+  padding:6px 10px;cursor:pointer;transition:background .15s,border-color .15s;
   -webkit-tap-highlight-color:transparent;user-select:none;
 }
 .lcard.on{background:rgba(255,255,255,.04)}
-.lcard-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.lcard-icon{font-size:18px;line-height:1}
-.lcard-label{font-size:12px;font-weight:700}
+.lcard-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.lcard-icon{font-size:15px;line-height:1}
+.lcard-label{font-size:11px;font-weight:700}
+.lcard-name{flex:1;min-width:0}
 .lcard-toggle{
   width:30px;height:17px;background:var(--border);border-radius:9px;
   position:relative;transition:background .2s;flex-shrink:0;
@@ -136,12 +137,12 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
 }
 .lcard.on .lcard-toggle{background:var(--color)}
 .lcard.on .lcard-toggle::after{transform:translateX(13px)}
-.lcard-sub{font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.3}
-.op-row{display:flex;align-items:center;gap:6px}
-.op-label{font-size:9px;color:var(--muted);white-space:nowrap}
+.lcard-sub{font-size:9px;color:var(--muted);margin:1px 0 0;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.op-row{display:flex;align-items:center;gap:5px}
+.op-label{font-size:8px;color:var(--muted);white-space:nowrap}
 input[type=range]{flex:1;height:3px;-webkit-appearance:none;background:var(--border);border-radius:2px;outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;cursor:pointer;border:2px solid #fff}
-.op-val{font-size:9px;color:var(--muted);width:24px;text-align:right}
+.op-val{font-size:8px;color:var(--muted);width:20px;text-align:right}
 .lcard[data-key=flood]{--color:var(--flood)}
 .lcard[data-key=land]{--color:var(--land)}
 .lcard[data-key=surge]{--color:var(--surge)}
@@ -197,7 +198,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 .leaflet-control-zoom a:last-child{border-bottom:none!important}
 .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--muted)!important;font-size:9px!important;border-radius:6px 0 0 0!important}
 .leaflet-control-attribution a{color:var(--accent)!important}
-.leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 210px)!important}
+.leaflet-control-zoom{margin-right:14px!important;margin-bottom:calc(env(safe-area-inset-bottom,0) + 295px)!important}
 @media (max-width:600px){
   #panel{display:none!important}
   .leaflet-control-zoom{margin-bottom:calc(env(safe-area-inset-bottom,0) + 76px)!important}
@@ -206,13 +207,13 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 #status-bar{
   position:fixed;left:0;right:0;bottom:0;z-index:1001;
   background:rgba(26,31,46,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  border-top:1px solid var(--border);padding:8px 10px;
+  border-top:1px solid var(--border);padding:6px 10px;
   display:none;gap:8px;
 }
 #status-bar.active{display:flex}
 .st-btn{
-  flex:1;height:48px;border-radius:10px;border:2px solid var(--border);
-  background:none;color:var(--muted);font-size:13px;font-weight:700;
+  flex:1;height:38px;border-radius:10px;border:2px solid var(--border);
+  background:none;color:var(--muted);font-size:12px;font-weight:700;
   font-family:'Noto Sans JP',sans-serif;cursor:pointer;
   transition:background .15s,border-color .15s,color .15s;
   -webkit-tap-highlight-color:transparent;
@@ -288,10 +289,9 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="flood" onclick="toggleLayer('flood')">
       <div class="lcard-top">
         <span class="lcard-icon">🌊</span>
-        <span class="lcard-label" style="color:var(--flood)">洪水</span>
+        <div class="lcard-name"><span class="lcard-label" style="color:var(--flood)">洪水</span><div class="lcard-sub">浸水想定区域 想定最大規模(L2)</div></div>
         <div class="lcard-toggle"></div>
       </div>
-      <div class="lcard-sub">浸水想定区域<br>想定最大規模(L2)</div>
       <div class="op-row">
         <span class="op-label">透過</span>
         <input type="range" data-key="flood" min="0" max="100" value="70" oninput="setOp('flood',this.value)">
@@ -301,10 +301,9 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="land" onclick="toggleLayer('land')">
       <div class="lcard-top">
         <span class="lcard-icon">⛰️</span>
-        <span class="lcard-label" style="color:var(--land)">土砂災害</span>
+        <div class="lcard-name"><span class="lcard-label" style="color:var(--land)">土砂災害</span><div class="lcard-sub">警戒区域 土石流・急傾斜・地すべり</div></div>
         <div class="lcard-toggle"></div>
       </div>
-      <div class="lcard-sub">警戒区域<br>土石流・急傾斜・地すべり</div>
       <div class="op-row">
         <span class="op-label">透過</span>
         <input type="range" data-key="land" min="0" max="100" value="70" oninput="setOp('land',this.value)">
@@ -314,10 +313,9 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="surge" onclick="toggleLayer('surge')">
       <div class="lcard-top">
         <span class="lcard-icon">🌀</span>
-        <span class="lcard-label" style="color:var(--surge)">高潮</span>
+        <div class="lcard-name"><span class="lcard-label" style="color:var(--surge)">高潮</span><div class="lcard-sub">浸水想定区域 最大規模台風等</div></div>
         <div class="lcard-toggle"></div>
       </div>
-      <div class="lcard-sub">浸水想定区域<br>最大規模台風等</div>
       <div class="op-row">
         <span class="op-label">透過</span>
         <input type="range" data-key="surge" min="0" max="100" value="70" oninput="setOp('surge',this.value)">
@@ -327,10 +325,9 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <div class="lcard on" data-key="tsun" onclick="toggleLayer('tsun')">
       <div class="lcard-top">
         <span class="lcard-icon">🌊</span>
-        <span class="lcard-label" style="color:var(--tsun)">津波</span>
+        <div class="lcard-name"><span class="lcard-label" style="color:var(--tsun)">津波</span><div class="lcard-sub">浸水想定 最大クラス</div></div>
         <div class="lcard-toggle"></div>
       </div>
-      <div class="lcard-sub">浸水想定<br>最大クラス</div>
       <div class="op-row">
         <span class="op-label">透過</span>
         <input type="range" data-key="tsun" min="0" max="100" value="70" oninput="setOp('tsun',this.value)">
