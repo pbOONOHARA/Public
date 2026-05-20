@@ -204,7 +204,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 }
 /* ── ステータスバー ── */
 #status-bar{
-  position:fixed;left:0;right:0;bottom:210px;z-index:999;
+  position:fixed;left:0;right:0;bottom:0;z-index:1001;
   background:rgba(26,31,46,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border-top:1px solid var(--border);padding:8px 10px;
   display:none;gap:8px;
@@ -932,6 +932,23 @@ document.querySelectorAll('.st-btn').forEach(btn => {
     showToast(`ステータス：${STATUSES[myStatus].emoji} ${STATUSES[myStatus].label}`);
   });
 });
+
+// ─────────────────────────────────────────────────────
+// ステータスバーの縦位置をパネル高さに合わせて動的調整
+// ─────────────────────────────────────────────────────
+function updateStatusBarPos() {
+  const bar   = document.getElementById('status-bar');
+  const panel = document.getElementById('panel');
+  if (window.innerWidth > 600) {
+    // PC/タブレット：ハザードパネルの実高さの上に配置
+    bar.style.bottom = panel.offsetHeight + 'px';
+  } else {
+    // スマホ：パネル非表示なので最下部
+    bar.style.bottom = '';
+  }
+}
+updateStatusBarPos();
+window.addEventListener('resize', updateStatusBarPos);
 
 // タブを閉じてもピンは残す（12時間後に自動削除）
 // ※ GPS停止ボタンを押した場合のみ removeMyLocation() が呼ばれる
