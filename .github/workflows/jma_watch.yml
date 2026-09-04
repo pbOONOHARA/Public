@@ -1,0 +1,45 @@
+name: JMA Disaster Watch
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jma-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyjwt cryptography requests
+
+      - name: Run JMA watcher
+        env:
+          JMA_WATCH_CLIENT_ID: ${{ secrets.JMA_WATCH_CLIENT_ID }}
+          JMA_WATCH_CLIENT_SECRET: ${{ secrets.JMA_WATCH_CLIENT_SECRET }}
+          JMA_WATCH_SERVICE_ACCOUNT_ID: ${{ secrets.JMA_WATCH_SERVICE_ACCOUNT_ID }}
+          JMA_WATCH_BOT_ID: ${{ secrets.JMA_WATCH_BOT_ID }}
+          JMA_WATCH_PRIVATE_KEY_PEM: ${{ secrets.JMA_WATCH_PRIVATE_KEY_PEM }}
+          JMA_WATCH_CHANNEL_ID: ${{ secrets.JMA_WATCH_CHANNEL_ID }}
+          JMA_WATCH_SOURCE_LABEL: "GitHub"
+        run: python .github/scripts/jma_watch.py
+
+      - name: Commit state if changed
+        run: |
+          git config user.name "jma-watch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .github/scripts/jma_watch_state.json
+          git diff --cached --quiet || git commit -m "jma_watch: update state [skip ci]"
+          git push
