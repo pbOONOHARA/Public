@@ -1,6 +1,6 @@
 """
 気象庁防災情報XML ポーリング → LINE WORKS Bot 通知スクリプト（GitHub Actions版）
-四国4県（徳島・香川・愛媛・高知）の 洪水警報／高潮警報／土砂災害警戒情報／津波警報(大津波警報含む) を検知して通知する。
+四国4県（徳島・香川・愛媛・高知）の 洪水警報／高潮警報／土砂災害警戒情報／津波警報(大津波警報含む)／震度5弱以上 を検知して通知する。
 
 社内サーバー(192.168.2.184)側の常設監視が止まっても検知できるよう、
 GitHub Actionsの定期実行(.github/workflows/jma_watch.yml)で並行運用する冗長系。
@@ -60,6 +60,13 @@ TARGET_TSUNAMI_AREA_CODES = {
     "610": "高知県",
 }
 
+# 震度階級の強さ順(震度速報のMaxInt表記に対応)。震度5弱以上を通知対象とする
+INTENSITY_RANK = {
+    "1": 1, "2": 2, "3": 3, "4": 4,
+    "5-": 5, "5+": 6, "6-": 7, "6+": 8, "7": 9,
+}
+EARTHQUAKE_THRESHOLD = INTENSITY_RANK["5-"]
+
 # 同じ警報キーを再通知しないでおく期間(時間)。これを過ぎたら「再発表」扱いで再通知する
 EXPIRY_HOURS = 6
 
@@ -67,6 +74,7 @@ NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "met": "http://xml.kishou.go.jp/jmaxml1/body/meteorology1/",
     "seis": "http://xml.kishou.go.jp/jmaxml1/body/seismology1/",
+    "jmx_eb": "http://xml.kishou.go.jp/jmaxml1/elementBasis1/",
 }
 
 STATE_PATH = BASE_DIR / "jma_watch_state.json"
@@ -134,10 +142,20 @@ def fetch_feed_entries(feed_url: str) -> list[dict]:
 
 
 def detect_code(filename_url: str) -> str | None:
-    for code in ("VPWW53", "VXWW50", "VTSE41"):
+    for code in ("VPWW53", "VXWW50", "VTSE41", "VXSE51", "VXSE53"):
         if f"_{code}_" in filename_url:
             return code
     return None
+
+
+def format_intensity(raw: str) -> str:
+    """MaxIntの表記("5-"/"5+"/"4 "等)を「5弱」「5強」「4」のような表示用文字列に変換"""
+    v = raw.strip()
+    if v.endswith("-"):
+        return v[:-1] + "弱"
+    if v.endswith("+"):
+        return v[:-1] + "強"
+    return v
 
 
 # ---------- 電文ごとの判定 ----------
@@ -214,18 +232,75 @@ def check_tsunami(xml_bytes: bytes) -> list[dict]:
     return hits
 
 
+def check_earthquake_quick(xml_bytes: bytes) -> list[dict]:
+    """震度速報（地域単位・速報性重視）から 震度5弱以上(対象4県)を抽出"""
+    root = ET.fromstring(xml_bytes)
+    hits = []
+    for pref in root.findall(".//seis:Body/seis:Intensity/seis:Observation/seis:Pref", NS):
+        pref_code = pref.findtext("seis:Code", default="", namespaces=NS)
+        pref_name = TARGET_PREF_CODE_PREFIX.get(pref_code)
+        if pref_name is None:
+            continue
+        for area in pref.findall("seis:Area", NS):
+            maxint = area.findtext("seis:MaxInt", default="", namespaces=NS)
+            if INTENSITY_RANK.get(maxint.strip(), 0) < EARTHQUAKE_THRESHOLD:
+                continue
+            area_code = area.findtext("seis:Code", default="", namespaces=NS)
+            area_name = area.findtext("seis:Name", default="", namespaces=NS)
+            hits.append({
+                "key": f"eq_speedy_{area_code}",
+                "pref": pref_name,
+                "area": area_name,
+                "kind": f"震度{format_intensity(maxint)}（速報・詳細は後続の通知で届きます）",
+            })
+    return hits
+
+
+def check_earthquake_detail(xml_bytes: bytes) -> list[dict]:
+    """震源・震度に関する情報（市町村単位の詳細）から 震度5弱以上(対象4県)を抽出"""
+    root = ET.fromstring(xml_bytes)
+
+    epicenter = root.findtext(".//seis:Body/seis:Earthquake/seis:Hypocenter/seis:Area/seis:Name", default="", namespaces=NS)
+    magnitude_el = root.find(".//seis:Body/seis:Earthquake/jmx_eb:Magnitude", NS)
+    magnitude = magnitude_el.text.strip() if magnitude_el is not None and magnitude_el.text else ""
+
+    hits = []
+    for city in root.findall(".//seis:Body/seis:Intensity/seis:Observation/seis:Pref/seis:Area/seis:City", NS):
+        maxint = city.findtext("seis:MaxInt", default="", namespaces=NS)
+        if INTENSITY_RANK.get(maxint.strip(), 0) < EARTHQUAKE_THRESHOLD:
+            continue
+        city_code = city.findtext("seis:Code", default="", namespaces=NS)
+        city_name = city.findtext("seis:Name", default="", namespaces=NS)
+        pref_name = TARGET_PREF_CODE_PREFIX.get(city_code[:2])
+        if pref_name is None:
+            continue
+        extra = f"震源: {epicenter}" + (f" M{magnitude}" if magnitude else "") if epicenter else ""
+        hits.append({
+            "key": f"eq_detail_{city_code}",
+            "pref": pref_name,
+            "area": city_name,
+            "kind": f"震度{format_intensity(maxint)}",
+            "extra": extra,
+        })
+    return hits
+
+
 CHECKERS = {
     "VPWW53": check_weather_warning,
     "VXWW50": check_dosekisai,
     "VTSE41": check_tsunami,
+    "VXSE51": check_earthquake_quick,
+    "VXSE53": check_earthquake_detail,
 }
 
 
 def build_message(hit: dict) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    extra_line = f"{hit['extra']}\n" if hit.get("extra") else ""
     return (
         f"【災害情報】{hit['pref']} {hit['area']}\n"
         f"{hit['kind']} が発表されました（確認時刻 {now}）\n"
+        f"{extra_line}"
         f"ハザードマップ・安否確認: {HAZARD_MAP_URL}\n"
         f"（名前入れて開始押して右上の赤ピンを押す）\n"
         f"（{SOURCE_LABEL}より）"
