@@ -24,6 +24,14 @@
 html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text)}
 #map{position:fixed;inset:0;z-index:0}
 
+/* ── 地図上への安否サマリー表示（枠なし・文字のみ） ── */
+#status-overlay{
+  position:fixed;left:14px;top:64px;z-index:500;
+  font-size:12px;line-height:1.6;color:#fff;font-weight:700;
+  text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
+  pointer-events:none;max-width:calc(100% - 90px);
+}
+
 /* ── 上部バー ── */
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:1000;
@@ -234,6 +242,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 </head>
 <body>
 <div id="map"></div>
+<div id="status-overlay"></div>
 
 <!-- ★ セットアップモーダル：初回・名前変更時に表示 -->
 <div id="setup-modal">
@@ -428,6 +437,7 @@ const STATUSES = {
   waiting: { label:'待機中', color:'#4da6ff', emoji:'🔵' },
 };
 let myStatus = 'safe';
+const TOTAL_EMPLOYEES = 214;
 
 // ─────────────────────────────────────────────────────
 // セットアップモーダル（初回 / 名前変更）
@@ -826,12 +836,32 @@ if (locRef) {
 // ─────────────────────────────────────────────────────
 // デバイス一覧パネルの更新
 // ─────────────────────────────────────────────────────
+function updateStatusSummary(data) {
+  const counts = { safe: 0, moving: 0, waiting: 0 };
+  Object.values(data).forEach(d => {
+    if (d.status && Object.prototype.hasOwnProperty.call(counts, d.status)) counts[d.status]++;
+  });
+  const loggedIn = Object.keys(data).length;
+  const offline = Math.max(TOTAL_EMPLOYEES - loggedIn, 0);
+  const el = document.getElementById('status-overlay');
+  if (el) {
+    el.innerHTML = [
+      `${TOTAL_EMPLOYEES}人中`,
+      `安全：${counts.safe}人`,
+      `避難中：${counts.moving}人`,
+      `待機中：${counts.waiting}人`,
+      `未ログイン：${offline}人`,
+    ].join('<br>');
+  }
+}
+
 function updateDeviceList(data) {
   const body  = document.getElementById('device-list-body');
   const badge = document.getElementById('online-badge');
   const count = Object.keys(data).length;
   badge.textContent = `${count}台`;
   body.innerHTML = '';
+  updateStatusSummary(data);
 
   if (count === 0) {
     body.innerHTML = '<div class="dev-empty">接続中のデバイスなし</div>';
