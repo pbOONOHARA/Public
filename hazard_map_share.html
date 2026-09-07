@@ -32,6 +32,16 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
   pointer-events:none;max-width:calc(100% - 90px);
 }
 
+/* ── 地図上への事業所別ログイン状況（左下・枠なし・3列グリッド） ── */
+#office-summary{
+  position:fixed;left:14px;bottom:14px;z-index:500;
+  display:grid;grid-template-columns:repeat(3,auto);gap:2px 14px;
+  font-size:11px;line-height:1.6;color:#fff;font-weight:700;
+  text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
+  pointer-events:none;max-width:calc(100% - 28px);
+}
+#office-summary span{white-space:nowrap}
+
 /* ── 上部バー ── */
 #topbar{
   position:fixed;top:0;left:0;right:0;z-index:1000;
@@ -172,13 +182,13 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 }
 #setup-box h2{font-size:17px;font-weight:700;margin-bottom:6px}
 #setup-box p{font-size:12px;color:var(--muted);margin-bottom:22px;line-height:1.7}
-#name-input-field,#comment-input-field{
+#name-input-field,#comment-input-field,#office-select-field{
   width:100%;padding:13px 14px;font-size:16px;
   background:var(--bg);border:1.5px solid var(--border);
   border-radius:10px;color:var(--text);font-family:'Noto Sans JP',sans-serif;
   outline:none;margin-bottom:14px;box-sizing:border-box;
 }
-#name-input-field:focus,#comment-input-field:focus{border-color:var(--accent)}
+#name-input-field:focus,#comment-input-field:focus,#office-select-field:focus{border-color:var(--accent)}
 #comment-input-field{
   font-size:13px;resize:none;height:72px;line-height:1.6;
 }
@@ -243,6 +253,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
 <body>
 <div id="map"></div>
 <div id="status-overlay"></div>
+<div id="office-summary"></div>
 
 <!-- ★ セットアップモーダル：初回・名前変更時に表示 -->
 <div id="setup-modal">
@@ -253,6 +264,7 @@ input[type=range][data-key=tsun]::-webkit-slider-thumb{background:var(--tsun)}
     <span style="color:var(--accent)">例：佐藤、suzuki、1234</span></p>
     <input type="text" id="name-input-field" placeholder="なまえ（最大10文字）" maxlength="10" autocomplete="off" autocorrect="off">
     <textarea id="comment-input-field" placeholder="コメント（任意・最大100文字）" maxlength="100" autocomplete="off" autocorrect="off"></textarea>
+    <select id="office-select-field"></select>
     <button id="setup-ok" disabled>この名前で開始</button>
   </div>
 </div>
@@ -429,6 +441,15 @@ const MY_ID    = getOrCreateDeviceId();
 const MY_COLOR = colorForId(MY_ID);
 let myName     = localStorage.getItem('evacMap_deviceName') || '';
 let myComment  = localStorage.getItem('evacMap_deviceComment') || '';
+let myOffice   = localStorage.getItem('evacMap_deviceOffice') || '';
+
+// 事業所一覧（任意選択・未選択のまま進んでもよい。増減したらここを編集する）
+const OFFICES = ['本社','観音寺','丸亀','高松','四中','松山','徳島','高知','OS','三豊工場','まんのう','山本処分場','財田処分場'];
+
+// 事業所ごとの人数（分母）。判明した事業所だけ数値を入れる。未設定は "xx" 表示のまま
+const OFFICE_TOTALS = {
+  // 例: '本社': 30,
+};
 
 // ステータス定義
 const STATUSES = {
@@ -445,25 +466,34 @@ const TOTAL_EMPLOYEES = 214;
 const setupModal  = document.getElementById('setup-modal');
 const nameField   = document.getElementById('name-input-field');
 const commentField = document.getElementById('comment-input-field');
+const officeField = document.getElementById('office-select-field');
 const setupOkBtn  = document.getElementById('setup-ok');
+
+// 事業所プルダウンの中身を作る（先頭は「選択しない」で未指定のまま進める）
+officeField.innerHTML = ['<option value="">事業所を選択</option>']
+  .concat(OFFICES.map(o => `<option value="${o}">${o}</option>`))
+  .join('');
 
 function openSetup() {
   nameField.value = myName;
   commentField.value = myComment;
+  officeField.value = myOffice;
   setupOkBtn.disabled = !nameField.value.trim();
   setupModal.style.display = 'flex';
   setTimeout(() => nameField.focus(), 150);
 }
 
-function applySetup(name, comment) {
+function applySetup(name, comment, office) {
   myName = name.trim();
   myComment = comment.trim();
+  myOffice = office || '';
   localStorage.setItem('evacMap_deviceName', myName);
   localStorage.setItem('evacMap_deviceComment', myComment);
+  localStorage.setItem('evacMap_deviceOffice', myOffice);
   setupModal.style.display = 'none';
   // 自分のマーカーポップアップを更新
   if (gpsMarker) gpsMarker.getPopup()?.setContent(makeMyPopupHtml());
-  // GPS共有中なら名前・コメントを更新
+  // GPS共有中なら名前・コメント・事業所を更新
   if (watching && locRef) uploadLocation(null, null, null, true);
 }
 
@@ -471,16 +501,16 @@ nameField.addEventListener('input', () => {
   setupOkBtn.disabled = !nameField.value.trim();
 });
 nameField.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && nameField.value.trim()) applySetup(nameField.value, commentField.value);
+  if (e.key === 'Enter' && nameField.value.trim()) applySetup(nameField.value, commentField.value, officeField.value);
 });
 commentField.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && nameField.value.trim()) {
     e.preventDefault();
-    applySetup(nameField.value, commentField.value);
+    applySetup(nameField.value, commentField.value, officeField.value);
   }
 });
 setupOkBtn.addEventListener('click', () => {
-  if (nameField.value.trim()) applySetup(nameField.value, commentField.value);
+  if (nameField.value.trim()) applySetup(nameField.value, commentField.value, officeField.value);
 });
 
 // 初回は名前未設定なのでモーダルを表示
@@ -587,6 +617,7 @@ function makeMyPopupHtml() {
   const st = STATUSES[myStatus];
   return `<div style="min-width:150px">
     <div style="font-weight:700;color:${MY_COLOR};font-size:14px;margin-bottom:4px">${myName}（自分）</div>
+    ${myOffice ? `<div style="color:var(--muted);font-size:11px;margin-bottom:4px">${myOffice}</div>` : ''}
     ${st ? `<div style="margin-bottom:6px"><span style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}66;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${st.emoji} ${st.label}</span></div>` : ''}
     ${myComment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${myComment}</div>` : ''}
   </div>`;
@@ -649,10 +680,11 @@ function makeOtherIcon(name, color, ts, status) {
 function uploadLocation(lat, lng, accuracy, nameOnly) {
   if (!locRef || !myName) return;
   const payload = nameOnly
-    ? { name: myName, comment: myComment }   // 名前・コメント変更のみ
+    ? { name: myName, comment: myComment, office: myOffice }   // 名前・コメント・事業所変更のみ
     : {
         name:     myName,
         comment:  myComment,
+        office:   myOffice,
         status:   myStatus,
         lat:      parseFloat((lat).toFixed(6)),
         lng:      parseFloat((lng).toFixed(6)),
@@ -693,6 +725,7 @@ gpsBtnEl.addEventListener('click', () => {
     if (gpsCircle) { map.removeLayer(gpsCircle); gpsCircle = null; }
     removeMyLocation();
     document.getElementById('status-bar').classList.remove('active');
+    updateStatusBarPos();
     showToast('GPS追跡・位置共有を停止');
     return;
   }
@@ -719,6 +752,7 @@ gpsBtnEl.addEventListener('click', () => {
         myStatus = 'safe';
         document.querySelectorAll('.st-btn').forEach(b => b.classList.toggle('active', b.dataset.key === 'safe'));
         document.getElementById('status-bar').classList.add('active');
+        updateStatusBarPos();
 
         gpsMarker = L.marker([lat, lng], { icon, zIndexOffset: 2000 })
           .bindPopup(makeMyPopupHtml(), { className: 'dev-popup', maxWidth: 220 })
@@ -811,6 +845,7 @@ if (locRef) {
       const popupHtml = `
         <div style="min-width:150px">
           <div style="font-weight:700;color:${color};font-size:14px;margin-bottom:4px">${d.name || '不明'}</div>
+          ${d.office ? `<div style="color:var(--muted);font-size:11px;margin-bottom:4px">${d.office}</div>` : ''}
           ${dSt ? `<div style="margin-bottom:6px"><span style="background:${dSt.color}22;color:${dSt.color};border:1px solid ${dSt.color}66;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${dSt.emoji} ${dSt.label}</span></div>` : ''}
           ${d.comment ? `<div style="color:var(--text);font-size:11px;margin-bottom:4px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
           <div style="color:var(--muted);font-size:11px">更新: ${age}</div>
@@ -855,6 +890,20 @@ function updateStatusSummary(data) {
   }
 }
 
+function updateOfficeSummary(data) {
+  const el = document.getElementById('office-summary');
+  if (!el) return;
+  const counts = {};
+  OFFICES.forEach(o => counts[o] = 0);
+  Object.values(data).forEach(d => {
+    if (d.office && Object.prototype.hasOwnProperty.call(counts, d.office)) counts[d.office]++;
+  });
+  el.innerHTML = OFFICES.map(o => {
+    const total = OFFICE_TOTALS[o] !== undefined ? OFFICE_TOTALS[o] : 'xx';
+    return `<span>${o} ${counts[o]}/${total}</span>`;
+  }).join('');
+}
+
 function updateDeviceList(data) {
   const body  = document.getElementById('device-list-body');
   const badge = document.getElementById('online-badge');
@@ -862,6 +911,7 @@ function updateDeviceList(data) {
   badge.textContent = `${count}台`;
   body.innerHTML = '';
   updateStatusSummary(data);
+  updateOfficeSummary(data);
 
   if (count === 0) {
     body.innerHTML = '<div class="dev-empty">接続中のデバイスなし</div>';
@@ -884,6 +934,7 @@ function updateDeviceList(data) {
         <div class="dev-dot" style="background:${color}"></div>
         <div class="dev-name">
           ${d.name || '?'}${isMe ? ' <span style="color:var(--muted);font-weight:400">(自分)</span>' : ''}
+          ${d.office ? `<span style="margin-left:5px;font-size:9px;color:var(--muted)">${d.office}</span>` : ''}
           ${rSt ? `<span style="margin-left:5px;font-size:9px;padding:1px 5px;border-radius:3px;background:${rSt.color}33;color:${rSt.color};font-weight:700">${rSt.emoji}${rSt.label}</span>` : ''}
           ${d.comment ? `<div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px;white-space:pre-wrap;word-break:break-all">${d.comment}</div>` : ''}
         </div>
@@ -967,15 +1018,20 @@ document.querySelectorAll('.st-btn').forEach(btn => {
 // ステータスバーの縦位置をパネル高さに合わせて動的調整
 // ─────────────────────────────────────────────────────
 function updateStatusBarPos() {
-  const bar   = document.getElementById('status-bar');
-  const panel = document.getElementById('panel');
+  const bar     = document.getElementById('status-bar');
+  const panel   = document.getElementById('panel');
+  const officeEl = document.getElementById('office-summary');
+  let reserved = 0;
   if (window.innerWidth > 600) {
     // PC/タブレット：ハザードパネルの実高さの上に配置
     bar.style.bottom = panel.offsetHeight + 'px';
+    reserved += panel.offsetHeight;
   } else {
     // スマホ：パネル非表示なので最下部
     bar.style.bottom = '';
   }
+  if (bar.classList.contains('active')) reserved += bar.offsetHeight;
+  if (officeEl) officeEl.style.bottom = (reserved + 14) + 'px';
 }
 updateStatusBarPos();
 window.addEventListener('resize', updateStatusBarPos);
