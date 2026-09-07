@@ -24,11 +24,12 @@
 html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text)}
 #map{position:fixed;inset:0;z-index:0}
 
-/* ── 地図上への安否サマリー表示（枠なし・文字のみ） ── */
+/* ── 地図上への安否サマリー表示（枠なし・文字のみ） ──
+   mix-blend-mode:differenceで、地図の明暗を問わず自動で読みやすい色にする */
 #status-overlay{
   position:fixed;left:14px;top:64px;z-index:500;
   font-size:12px;line-height:1.6;color:#fff;font-weight:700;
-  text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
+  mix-blend-mode:difference;
   pointer-events:none;max-width:calc(100% - 90px);
 }
 
@@ -37,7 +38,7 @@ html,body{height:100%;overflow:hidden;font-family:'Noto Sans JP',sans-serif;back
   position:fixed;left:14px;bottom:14px;z-index:500;
   display:grid;grid-template-columns:repeat(3,auto);gap:2px 14px;
   font-size:11px;line-height:1.6;color:#fff;font-weight:700;
-  text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.7);
+  mix-blend-mode:difference;
   pointer-events:none;max-width:calc(100% - 28px);
 }
 #office-summary span{white-space:nowrap}
