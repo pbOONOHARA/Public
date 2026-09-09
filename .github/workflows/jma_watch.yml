@@ -1,12 +1,16 @@
 name: JMA Disaster Watch
 
+# GitHubのschedule(cron)は高頻度設定(*/5等)だと裏側で大幅に間引かれるため、
+# 5分おきの巡回は「1ジョブ内でループ→終了間際に自分自身を再起動」の自己連鎖方式で実現する。
+# scheduleは、万一チェーンが途切れた場合の保険（数時間おきの再起動）としてのみ残す。
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: jma-watch
@@ -15,6 +19,7 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: pip install pyjwt cryptography requests
 
-      - name: Run JMA watcher
+      - name: Watch loop (1分おき、約5時間40分間)
         env:
           JMA_WATCH_CLIENT_ID: ${{ secrets.JMA_WATCH_CLIENT_ID }}
           JMA_WATCH_CLIENT_SECRET: ${{ secrets.JMA_WATCH_CLIENT_SECRET }}
@@ -34,12 +39,27 @@ jobs:
           JMA_WATCH_PRIVATE_KEY_PEM: ${{ secrets.JMA_WATCH_PRIVATE_KEY_PEM }}
           JMA_WATCH_CHANNEL_ID: ${{ secrets.JMA_WATCH_CHANNEL_ID }}
           JMA_WATCH_SOURCE_LABEL: "GitHub"
-        run: python .github/scripts/jma_watch.py
+        run: |
+          END=$((SECONDS + 340*60))
+          while [ $SECONDS -lt $END ]; do
+            python .github/scripts/jma_watch.py
+            sleep 60
+          done
 
       - name: Commit state if changed
+        if: always()
         run: |
           git config user.name "jma-watch-bot"
           git config user.email "actions@users.noreply.github.com"
           git add .github/scripts/jma_watch_state.json
           git diff --cached --quiet || git commit -m "jma_watch: update state [skip ci]"
           git push
+
+      - name: 次のジョブを起動（自己連鎖。GITHUB_TOKENだと無限ループ防止で弾かれるためPATを使う）
+        if: always()
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GH_SELF_TRIGGER_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/jma_watch.yml/dispatches \
+            -d "{\"ref\":\"${{ github.ref_name }}\"}"
